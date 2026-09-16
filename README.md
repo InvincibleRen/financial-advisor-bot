@@ -261,6 +261,29 @@ For each ticker it prints out-of-sample accuracy, the base rate, the edge
 `reports/`. Single-stock direction is close to a coin flip, so a small or negative
 edge is an honest, acceptable outcome.
 
+**Pooled cross-stock path (`src/direction/pooled.py`).** The per-stock model
+relearns from only ~250 rows each fold, which overfits noise and produces
+unreliable probabilities. The pooled path trains **one** model per rebalance date
+across a whole basket of stocks (tens of thousands of rows), keeping the same
+leakage guarantees (causal features, forward labels, a `horizon`-day embargo, a
+trailing window). Pooling plus calibration lifts accuracy to the base rate and
+shrinks the calibration error, and **selective prediction** (acting only on the
+most confident calls) recovers a small positive edge. It reads the local price
+cache, so it is fully offline and reproducible:
+
+```bash
+python -m src.cli.pooled_direction_cli                    # default 30-name basket, horizon 5
+python -m src.cli.pooled_direction_cli AAPL MSFT NVDA     # a custom basket
+python -m src.cli.pooled_direction_cli --no-calibrate     # ablate the calibration step
+```
+
+It prints the pooled out-of-sample metrics and a selective-prediction table
+(accuracy when only the most confident X% of calls are kept), and writes a
+`direction_pooled_*.md` report. AUC stays near 0.5, which honestly locates the
+ceiling: single-stock short-horizon direction carries little ranking information;
+the value the pooled path adds is trustworthy probabilities and a usable
+confidence ranking, not a large predictive edge.
+
 > **Probability calibration (`--calibrate`, on by default).** The displayed P(up)
 > is calibrated so it reads as a true frequency (a "63%" day really rises ~63% of
 > the time). Calibration is fit only on held-out CV folds of each training window

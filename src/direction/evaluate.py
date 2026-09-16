@@ -55,6 +55,7 @@ class DirectionEvaluation:
     ece: float = float("nan")        # expected calibration error (|conf - acc| over bins)
     calibrated: bool = False         # whether probability calibration was applied
     reliability: pd.DataFrame = field(repr=False, default_factory=pd.DataFrame)
+    selective: pd.DataFrame = field(repr=False, default_factory=pd.DataFrame)
     predictions: pd.DataFrame = field(repr=False, default_factory=pd.DataFrame)
 
 
@@ -142,6 +143,7 @@ def _summarise(ticker, kind, horizon_days, predictions: pd.DataFrame,
         ece=expected_calibration_error(actual, prob),
         calibrated=calibrated,
         reliability=reliability_table(actual, prob),
+        selective=selective_accuracy_table(predictions),
         predictions=predictions,
     )
 
@@ -197,6 +199,46 @@ def expected_calibration_error(actual: pd.Series, prob_up: pd.Series, n_bins: in
         return float("nan")
     w = table["n"] / table["n"].sum()
     return float((w * (table["mean_pred"] - table["frac_up"]).abs()).sum())
+
+
+def selective_accuracy_table(
+    predictions: pd.DataFrame,
+    coverages=(1.0, 0.8, 0.6, 0.4, 0.2),
+) -> pd.DataFrame:
+    """Directional accuracy when only the most confident calls are kept.
+
+    Confidence is ``|P(up) - 0.5|``: keeping the top ``coverage`` fraction of the
+    most confident predictions and abstaining on the rest is *selective
+    prediction*. Because the model is allowed to say "not sure", accuracy on the
+    calls it does make can clear the base rate even when the all-in accuracy does
+    not — the honest way to show that a near-coin-flip signal is still usable when
+    it is confident.
+
+    Expects columns ``prob_up`` and ``actual``. Returns one row per coverage with
+    ``coverage``, ``n`` (calls kept), ``accuracy`` and ``edge_vs_base``
+    (accuracy minus the majority-class base rate of the full set).
+    """
+    cols = ["coverage", "n", "accuracy", "edge_vs_base"]
+    if predictions is None or predictions.empty:
+        return pd.DataFrame(columns=cols)
+
+    prob = predictions["prob_up"].to_numpy(dtype="float64")
+    actual = predictions["actual"].to_numpy(dtype="float64")
+    up_share = actual.mean()
+    base_rate = max(up_share, 1.0 - up_share)
+
+    order = np.argsort(-np.abs(prob - 0.5))   # most confident first
+    prob, actual = prob[order], actual[order]
+    n_total = len(actual)
+
+    rows = []
+    for coverage in coverages:
+        k = max(1, int(round(n_total * coverage)))
+        pred_k = (prob[:k] >= 0.5).astype("float64")
+        accuracy = float((pred_k == actual[:k]).mean())
+        rows.append({"coverage": float(coverage), "n": int(k),
+                     "accuracy": accuracy, "edge_vs_base": accuracy - base_rate})
+    return pd.DataFrame(rows, columns=cols)
 
 
 def _safe_auc(actual: pd.Series, prob_up: pd.Series) -> Optional[float]:
