@@ -1,0 +1,29 @@
+# Extension A (FinBERT news sentiment) — heavy, optional dependencies.
+# Kept separate from requirements.txt so the core ML pipeline stays lightweight.
+# The core project (Phases 0-2) does NOT need these; sentiment/ is removable.
+#
+# Default (torch) backend — works on Apple Silicon (arm64) / Linux / Windows:
+#     pip install -r requirements-extension-a.txt
+# transformers < 4.50 avoids the torch.load security gate (CVE-2025-32434), so
+# FinBERT loads on the torch you have; safetensors keeps loading off torch.load.
+transformers>=4.40,<4.50
+torch>=2.2
+safetensors>=0.4
+#
+# ---------------------------------------------------------------------------
+# macOS NOTE (important): PyTorch's last x86-macOS (Intel Mac) wheel is 2.2.2,
+# and the modern stack has moved past it (new transformers need torch>=2.6, and
+# optimum needs torch.rms_norm -> torch>=2.4). So ONNX-via-optimum does NOT
+# rescue an Intel-mode Python either. On an Apple-Silicon Mac, the fix is to
+# build the venv from an ARM64 Python (e.g. Homebrew's /opt/homebrew/bin/python3),
+# NOT an x86/Rosetta one — then the torch backend above just works (Metal/MPS).
+#
+# >>> x86 macOS / Intel Mac: use the TORCH-FREE backend instead of this file:
+#         pip install -r requirements-extension-a-onnx-local.txt
+#         python -m src.cli.sentiment_cli AAPL MSFT --backend onnx-local
+#     It loads a pre-exported model.onnx on ONNX Runtime and never imports torch.
+#
+# Optional ONNX-via-optimum backend (`--backend onnx`) — only where a torch>=2.4
+# export environment exists; install additionally:
+#     pip install "optimum[onnxruntime]" onnxruntime
+# ---------------------------------------------------------------------------

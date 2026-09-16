@@ -1,0 +1,10 @@
+# Phase 4 — Streamlit web interface. Install on top of requirements.txt:
+#     pip install -r requirements.txt -r requirements-ui.txt
+#     streamlit run src/ui/app.py
+#
+# The UI reuses the core scikit-learn stack (already in requirements.txt) for the
+# advisor, selector and direction forecaster. Streamlit ships x86-macOS wheels, so
+# this runs on an Intel Mac. The News-sentiment view additionally needs the
+# torch-free Extension-A backend: pip install -r requirements-extension-a-onnx-local.txt
+streamlit>=1.36
+altair>=5.0            # Streamlit's charting backend (st.line_chart)

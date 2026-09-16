@@ -1,0 +1,23 @@
+{
+  "n_recommendations": 648,
+  "n_sentences": 3244,
+  "n_checkable": 3244,
+  "coverage": 1.0,
+  "n_correct": 3244,
+  "accuracy": 1.0,
+  "claims_by_type": {
+    "sma20_above": 370,
+    "sma50_above": 366,
+    "sma200_above": 418,
+    "macd_above": 344,
+    "adx_band_and_value": 648,
+    "sma20_below": 278,
+    "sma50_below": 282,
+    "macd_below": 304,
+    "sma200_below": 230,
+    "death_cross": 3,
+    "golden_cross": 1
+  },
+  "violations": [],
+  "unmatched_examples": {}
+}

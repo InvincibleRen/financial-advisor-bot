@@ -1,0 +1,24 @@
+# Extension A (FinBERT news sentiment) — TORCH-FREE backend for x86 macOS / Intel Mac.
+#
+#   pip install -r requirements-extension-a-onnx-local.txt
+#   python -m src.cli.sentiment_cli AAPL MSFT --backend onnx-local
+#
+# Why this file exists: PyTorch's last x86-macOS wheel is 2.2.2 and the modern
+# transformers/optimum stack has moved past it, so neither the `torch` nor the
+# `onnx` (optimum-export) backend installs on an Intel Mac. `--backend onnx-local`
+# loads a *pre-exported* model.onnx with plain ONNX Runtime + the tokenizers
+# tokenizer and never imports torch. All wheels below ship for x86_64 macOS.
+#
+# onnxruntime: x86_64 macOS wheels ship through 1.23.x (macOS 13+). On macOS < 13
+# pin `onnxruntime==1.16.3` instead (macosx_10_15 wheels).
+onnxruntime>=1.16.3
+tokenizers>=0.19           # Rust tokenizer, x86_64 macOS wheels — no torch
+huggingface_hub>=0.23      # downloads the pre-exported model.onnx + tokenizer.json
+numpy>=1.24
+#
+# NOTE: `transformers` is intentionally NOT listed. Modern transformers eagerly
+# `import torch` at package load when torch is installed, which would defeat the
+# torch-free goal on an Intel Mac (and clash torch 2.2.2 with NumPy 2.x). The
+# onnx-local path uses `tokenizers` + config.json directly and never imports it.
+# If you previously installed the torch backend in this venv, `pip uninstall
+# torch` to silence its NumPy 2.x warning — onnx-local does not need it.

@@ -1,0 +1,174 @@
+{
+  "n_recommendations": 648,
+  "n_sentences": 3244,
+  "n_checkable": 3244,
+  "coverage": 1.0,
+  "n_correct": 3203,
+  "accuracy": 0.9873612823674476,
+  "claims_by_type": {
+    "sma20_above": 370,
+    "sma50_above": 366,
+    "sma200_above": 418,
+    "macd_above": 344,
+    "adx_band_and_value": 648,
+    "sma20_below": 278,
+    "sma50_below": 282,
+    "macd_below": 304,
+    "sma200_below": 230,
+    "death_cross": 3,
+    "golden_cross": 1
+  },
+  "violations": [
+    {
+      "ticker": "NVDA",
+      "date": "2025-08-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 28, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "GOOGL",
+      "date": "2025-04-30",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 27, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "GOOGL",
+      "date": "2025-09-30",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 44, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "GOOGL",
+      "date": "2026-05-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 40, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "META",
+      "date": "2024-10-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 30, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "META",
+      "date": "2025-02-28",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 35, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "META",
+      "date": "2025-11-28",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 36, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2024-12-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 45, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2025-03-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 28, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "AVGO",
+      "date": "2025-01-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 28, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "JPM",
+      "date": "2025-02-28",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 32, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "JPM",
+      "date": "2026-03-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 26, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "V",
+      "date": "2025-06-30",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 26, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "MA",
+      "date": "2024-10-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 26, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "UNH",
+      "date": "2025-06-30",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 28, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "UNH",
+      "date": "2025-09-30",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 32, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "UNH",
+      "date": "2026-02-27",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 35, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "UNH",
+      "date": "2026-05-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 42, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "HD",
+      "date": "2024-10-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 29, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "HD",
+      "date": "2025-03-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 27, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "HD",
+      "date": "2026-05-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 30, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "PG",
+      "date": "2025-01-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 27, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "CVX",
+      "date": "2025-07-31",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 34, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "KO",
+      "date": "2024-11-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 37, a developing rather than a strong trend."
+    },
+    {
+      "ticker": "KO",
+      "date": "2026-05-29",
+      "label": "adx_band_and_value",
+      "sentence": "ADX is moderate at about 28, a developing rather than a strong trend."
+    }
+  ],
+  "unmatched_examples": {}
+}

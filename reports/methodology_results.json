@@ -1,0 +1,97 @@
+{
+  "universe_size": 27,
+  "n_rebalances": 134,
+  "n_return_months": 134,
+  "top_n": 3,
+  "avg_turnover": 1.5995024875621888,
+  "cost_per_turnover_bps": 10.0,
+  "real": {
+    "ann_return": 0.35300596960654684,
+    "sharpe": 1.0982205125875084,
+    "strategy_metrics": {
+      "cumulative_return": 28.25365435941813,
+      "annualised_return": 0.35300596960654684,
+      "annualised_volatility": 0.32345441419133514,
+      "sharpe_ratio": 1.0982205125875084,
+      "max_drawdown": -0.42873981948879847,
+      "hit_rate": 0.6716417910447762,
+      "n_days": 134.0
+    },
+    "benchmark_metrics": {
+      "cumulative_return": 8.546782080723714,
+      "annualised_return": 0.22390691601654078,
+      "annualised_volatility": 0.15951275284079341,
+      "sharpe_ratio": 1.3556163395281287,
+      "max_drawdown": -0.23437554860214171,
+      "hit_rate": 0.7014925373134329,
+      "n_days": 134.0
+    },
+    "spy_metrics": {
+      "cumulative_return": 2.582317929003374,
+      "annualised_return": 0.12105427258057522,
+      "annualised_volatility": 0.15304942254840134,
+      "sharpe_ratio": 0.8263595546295955,
+      "max_drawdown": -0.24797877905140653,
+      "hit_rate": 0.664179104477612,
+      "n_days": 134.0
+    },
+    "ranking_metrics": {
+      "precision_at_n": 0.5422885572139303,
+      "mean_auc": 0.5246227652944071,
+      "base_rate": 0.48148148148148145,
+      "n_folds": 135.0
+    },
+    "monthly_win_rate": 0.582089552238806
+  },
+  "random_null": {
+    "n_draws": 500,
+    "ann_return_quantiles": {
+      "p5": 0.10000201610577553,
+      "p50": 0.18537105537716625,
+      "p95": 0.2728054099341977,
+      "mean": 0.1849237821393613
+    },
+    "sharpe_quantiles": {
+      "p5": 0.5596112386628466,
+      "p50": 0.8777975267966754,
+      "p95": 1.199292560813544,
+      "mean": 0.8781402055037749
+    },
+    "ann_return_position": {
+      "percentile": 100.0,
+      "p_value": 0.001996007984031936
+    },
+    "sharpe_position": {
+      "percentile": 85.39999999999999,
+      "p_value": 0.14770459081836326
+    }
+  },
+  "bootstrap": {
+    "n_months": 134,
+    "block_size": 5,
+    "iid": {
+      "ann_return": [
+        0.35383601927417174,
+        0.12613418186107014,
+        0.6099740174225067
+      ],
+      "ann_sharpe": [
+        1.1154171568009401,
+        0.5243760500173831,
+        1.6932618632468752
+      ]
+    },
+    "block": {
+      "ann_return": [
+        0.3482295133893274,
+        0.12938976767765062,
+        0.6107097186859877
+      ],
+      "ann_sharpe": [
+        1.1101865858115316,
+        0.5432542244779037,
+        1.6624486549395165
+      ]
+    }
+  }
+}
