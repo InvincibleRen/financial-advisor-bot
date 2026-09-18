@@ -353,7 +353,7 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Label horizon in months: train to predict the N-month-ahead "
                              "relative winners (default 1). Values >1 add a leakage embargo so "
                              "training only uses folds whose label has already resolved.")
-    parser.add_argument("--model", choices=["gbm", "logistic", "both"], default="both",
+    parser.add_argument("--model", choices=["gbm", "logistic", "rf", "xgb", "both", "all"], default="both",
                         help="Ranker to run (default: both, for baseline comparison)")
     parser.add_argument("--min-train", type=int, default=6,
                         help="Minimum prior rebalances before a fold is evaluated (default 6)")
@@ -424,7 +424,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     prices_eval = dict(prices)
     prices_eval.update(spy)  # add SPY for the buy-and-hold benchmark only
 
-    kinds = ["gbm", "logistic"] if args.model == "both" else [args.model]
+    kinds = {"both": ["gbm", "logistic"],
+             "all": ["logistic", "gbm", "rf", "xgb"]}.get(args.model, [args.model])
     results: Dict[str, SelectionBacktest] = {}
     for kind in kinds:
         print(f"Running walk-forward selection with the {kind} ranker...")

@@ -29,7 +29,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-_VALID_KINDS = ("gbm", "logistic")
+_VALID_KINDS = ("gbm", "logistic", "rf", "xgb")
 
 # Features the gbm ranker excludes: permutation importance showed ``volatility``
 # *degrades* the tree's out-of-sample AUC (the tree overfits it), while the linear
@@ -66,7 +66,14 @@ class RankerModel:
     ----------
     kind:
         ``"gbm"`` -> ``HistGradientBoostingClassifier`` (native NaN support);
-        ``"logistic"`` -> median-impute + standardise + ``LogisticRegression``.
+        ``"logistic"`` -> median-impute + standardise + ``LogisticRegression``;
+        ``"rf"`` -> median-impute + ``RandomForestClassifier`` (bagged trees);
+        ``"xgb"`` -> ``XGBClassifier`` with row/column subsampling (native NaN).
+
+        All four expose the same ``fit``/``predict_scores`` surface, so the
+        walk-forward selector is indifferent to which is used. Chapter 5 compares
+        them on identical folds and selects on out-of-sample stability rather than
+        on the best full-period return.
     random_state:
         Seed passed to estimators that accept one, for reproducible folds.
     """
@@ -144,6 +151,47 @@ class RankerModel:
                 l2_regularization=1.0,
                 min_samples_leaf=min_samples_leaf,
                 random_state=self.random_state,
+            )
+
+        if self.kind == "rf":
+            # Bagged trees. Variance reduction by averaging many de-correlated
+            # trees suits a low signal-to-noise cross-section, where boosting can
+            # chase noise. The randomisation here (bootstrap resampling plus a
+            # random feature subset at each split) is intrinsic to the algorithm
+            # rather than a hand-tuned knob, which keeps the researcher degrees of
+            # freedom low. Random forests cannot consume NaN, so the sparse
+            # fundamentals are median-imputed first.
+            from sklearn.ensemble import RandomForestClassifier
+            from sklearn.impute import SimpleImputer
+            from sklearn.pipeline import Pipeline
+
+            return Pipeline(
+                steps=[
+                    ("impute", SimpleImputer(strategy="median")),
+                    ("clf", RandomForestClassifier(
+                        n_estimators=300, max_depth=6,
+                        # Same adaptive leaf rule as the booster: 40 on a full
+                        # cross-section, but capped by the training size so early,
+                        # tiny folds (and unit tests) can still split.
+                        min_samples_leaf=min(40, max(5, n_samples // 25)),
+                        n_jobs=1, random_state=self.random_state,
+                    )),
+                ]
+            )
+
+        if self.kind == "xgb":
+            # Gradient boosting with stochastic regularisation (row and column
+            # subsampling), which the evaluation shows is what separates it from
+            # the plain histogram booster. Missing values are handled natively, so
+            # no imputation is needed. Imported lazily: xgboost is an optional
+            # dependency and the package still imports without it.
+            from xgboost import XGBClassifier
+
+            return XGBClassifier(
+                n_estimators=300, max_depth=3, learning_rate=0.05,
+                subsample=0.8, colsample_bytree=0.8, reg_lambda=1.0,
+                n_jobs=1, random_state=self.random_state,
+                eval_metric="logloss", tree_method="hist",
             )
 
         # Logistic baseline: impute -> scale -> linear model.

@@ -24,7 +24,7 @@ def _separable(n_per_class=40, with_nan=False):
     return X, pd.Series(y, name="label")
 
 
-@pytest.mark.parametrize("kind", ["gbm", "logistic"])
+@pytest.mark.parametrize("kind", ["gbm", "logistic", "rf", "xgb"])
 def test_scores_rank_positives_above_negatives(kind):
     X, y = _separable()
     model = RankerModel(kind=kind, random_state=0).fit(X, y)
@@ -36,7 +36,7 @@ def test_scores_rank_positives_above_negatives(kind):
     assert scores[y == 1].mean() > scores[y == 0].mean()
 
 
-@pytest.mark.parametrize("kind", ["gbm", "logistic"])
+@pytest.mark.parametrize("kind", ["gbm", "logistic", "rf", "xgb"])
 def test_handles_missing_values(kind):
     X, y = _separable(with_nan=True)
     scores = RankerModel(kind=kind).fit(X, y).predict_scores(X)
@@ -86,3 +86,27 @@ def test_all_nan_column_does_not_emit_imputer_warning(recwarn):
     model = RankerModel(kind="logistic").fit(X, y)
     model.predict_scores(X)
     assert not any("Skipping features" in str(w.message) for w in recwarn.list)
+
+
+# --------------------------------------------------------------------------- #
+# Model-agnostic surface across every ranker                                  #
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("kind", ["gbm", "logistic", "rf", "xgb"])
+def test_every_kind_exposes_the_same_surface(kind):
+    """Swapping the ranker must change nothing a caller can observe."""
+    X, y = _separable()
+    scores = RankerModel(kind=kind, random_state=0).fit(X, y).predict_scores(X)
+
+    assert isinstance(scores, pd.Series)
+    assert scores.name == "score"
+    assert list(scores.index) == list(X.index)
+    assert scores.between(0.0, 1.0).all()
+
+
+@pytest.mark.parametrize("kind", ["rf", "xgb"])
+def test_new_kinds_are_column_order_invariant(kind):
+    X, y = _separable()
+    model = RankerModel(kind=kind, random_state=0).fit(X, y)
+    reordered = X[list(reversed(X.columns))]
+    pd.testing.assert_series_equal(model.predict_scores(X), model.predict_scores(reordered))
