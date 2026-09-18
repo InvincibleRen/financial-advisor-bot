@@ -58,3 +58,41 @@ def test_bootstrap_ci_brackets_and_orders():
         med, lo, hi = boot[key]
         assert lo < med < hi
         assert lo > 0.0                # a clearly positive series stays positive
+
+
+# --------------------------------------------------------------------------- #
+# Report wording                                                               #
+# --------------------------------------------------------------------------- #
+# The interpretation paragraph used to be a fixed, favourable sentence, so the
+# generated report asserted that the edge had survived even on runs where it had
+# not. These two tests pin the wording to the numbers in both directions.
+
+def _grid(sharpes):
+    import pandas as pd
+    return pd.DataFrame({"Sharpe": list(sharpes)})
+
+
+def test_interpretation_reports_a_strong_result_as_strong():
+    from src.cli.robustness_cli import _interpretation
+
+    text = _interpretation(
+        _grid([1.1, 1.2, 0.9]),
+        {"dsr": 0.99, "sr0": 0.12, "sr": 0.33, "n_trials": 50.0},
+        {"ann_sharpe": (1.0, 0.4, 1.7)},
+    )
+    assert "unlikely to be the lucky best of many attempts" in text
+    assert "All three checks are passed." in text
+
+
+def test_interpretation_reports_a_weak_result_as_weak():
+    from src.cli.robustness_cli import _interpretation
+
+    text = _interpretation(
+        _grid([0.4, -0.1, 0.2]),
+        {"dsr": 0.31, "sr0": 0.20, "sr": 0.08, "n_trials": 50.0},
+        {"ann_sharpe": (0.3, -0.5, 1.1)},
+    )
+    assert "cannot be separated from the best of many attempts" in text
+    assert "non-positive in 1 of 3" in text
+    assert "includes zero" in text
+    assert "Not every check is passed" in text

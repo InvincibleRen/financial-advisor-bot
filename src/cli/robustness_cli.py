@@ -68,27 +68,110 @@ def _precision_at_n(records: List[_FoldRecord], labels: pd.Series, n: int) -> fl
     return float(np.mean(ps)) if ps else float("nan")
 
 
-def compute_robustness(records, labels, prices, n_trials: int):
+def compute_robustness(records, labels, prices, n_trials: int, execution_lag: int = 0):
     """Return (grid_df, dsr_dict, bootstrap_dict) from already-trained folds."""
     grid, trial_sharpes = [], []
     for n in TOP_NS:
         w = _weights_for_n(records, n)
         prec = _precision_at_n(records, labels, n)
         for c in COSTS:
-            strat = evaluate_portfolio(w, prices, periods_per_year=12, cost_per_turnover=c)["strategy"]
+            strat = evaluate_portfolio(w, prices, periods_per_year=12, cost_per_turnover=c,
+                                       execution_lag=execution_lag)["strategy"]
             m = metrics.compute_metrics(strat, 0.0, 12)
             trial_sharpes.append(sharpe_per_period(strat.to_numpy()))
             grid.append({"N": n, "cost_bps": int(c * 10000), "precision": prec,
                          "CAGR": m["annualised_return"], "Sharpe": m["sharpe_ratio"],
                          "MaxDD": m["max_drawdown"]})
-    primary = evaluate_portfolio(_weights_for_n(records, 3), prices,
-                                 periods_per_year=12, cost_per_turnover=0.001)["strategy"]
+    primary = evaluate_portfolio(_weights_for_n(records, 3), prices, periods_per_year=12,
+                                 cost_per_turnover=0.001, execution_lag=execution_lag)["strategy"]
     dsr = deflated_sharpe_ratio(primary.to_numpy(), trial_sharpes=trial_sharpes, n_trials=n_trials)
     boot = bootstrap_return_metrics(primary.to_numpy(), periods_per_year=12)
     return pd.DataFrame(grid), dsr, boot
 
 
-def build_report(grid: pd.DataFrame, dsr: Dict[str, float], boot, n_trials: int) -> str:
+def dsr_across_trial_counts(records, prices, trial_counts, execution_lag: int = 0):
+    """DSR for the primary book under several assumptions about the search size.
+
+    The number of configurations tried is a judgement call, not an observable, and
+    the deflation is sensitive to it. Reporting a small ladder of counts is more
+    honest than defending one number: the reader sees how the conclusion changes as
+    the assumed search widens.
+    """
+    strat = evaluate_portfolio(_weights_for_n(records, 3), prices, periods_per_year=12,
+                               cost_per_turnover=0.001, execution_lag=execution_lag)["strategy"]
+    trial_sharpes = []
+    for n in TOP_NS:
+        w = _weights_for_n(records, n)
+        for c in COSTS:
+            s = evaluate_portfolio(w, prices, periods_per_year=12, cost_per_turnover=c,
+                                   execution_lag=execution_lag)["strategy"]
+            trial_sharpes.append(sharpe_per_period(s.to_numpy()))
+    return [
+        deflated_sharpe_ratio(strat.to_numpy(), trial_sharpes=trial_sharpes, n_trials=int(n))
+        for n in trial_counts
+    ]
+
+
+def _interpretation(grid: pd.DataFrame, dsr: Dict[str, float], boot) -> str:
+    """Describe what these three checks actually returned, pass or fail.
+
+    Earlier revisions hard-coded a favourable reading of the checks, which meant the
+    file claimed the edge had survived even on runs where it had not. The wording is
+    now derived from the numbers, so a weak result reports itself as weak.
+    """
+    survives = dsr["dsr"] >= 0.95
+    sharpes = grid["Sharpe"].dropna()
+    all_positive = bool(len(sharpes)) and bool((sharpes > 0).all())
+    lower = boot["ann_sharpe"][1]
+
+    parts = []
+    parts.append(
+        f"The deflated Sharpe is {dsr['dsr']:.4f} against a best-of-{int(dsr['n_trials'])} "
+        f"benchmark of {dsr['sr0']:.4f}, so on this assumption about the size of the search "
+        + ("the observed Sharpe is unlikely to be the lucky best of many attempts."
+           if survives else
+           "the observed Sharpe cannot be separated from the best of many attempts.")
+    )
+    if all_positive:
+        parts.append(
+            f"Sharpe stays positive in all {len(sharpes)} top-N / cost cells "
+            f"(range {sharpes.min():.2f} to {sharpes.max():.2f}), so the result is not a "
+            "single cherry-picked setting."
+        )
+    else:
+        n_neg = int((sharpes <= 0).sum())
+        parts.append(
+            f"Sharpe is non-positive in {n_neg} of {len(sharpes)} top-N / cost cells "
+            f"(range {sharpes.min():.2f} to {sharpes.max():.2f}), so the result depends on "
+            "the particular setting chosen."
+        )
+    parts.append(
+        f"The bootstrap 95% lower bound on the annualised Sharpe is {lower:.2f}, "
+        + ("which stays above zero." if lower > 0 else
+           "which includes zero, so the sample cannot rule out that the edge is noise.")
+    )
+    verdict = (
+        "All three checks are passed."
+        if (survives and all_positive and lower > 0)
+        else "Not every check is passed, and the weaker ones are reported above rather than "
+             "set aside."
+    )
+    return " ".join(parts) + f" {verdict} Out-of-sample research evaluation only; not financial advice."
+
+
+def build_report(grid: pd.DataFrame, dsr: Dict[str, float], boot, n_trials: int,
+                 dsr_ladder: Optional[List[Dict[str, float]]] = None) -> str:
+    ladder = ""
+    if dsr_ladder:
+        ladder_rows = "\n".join(
+            f"| {int(d['n_trials'])} | {d['sr0']:.4f} | {d['dsr']:.4f} |" for d in dsr_ladder
+        )
+        ladder = (
+            "\nThe count of configurations tried is a judgement, so the deflation is also "
+            "reported across a range of assumptions:\n\n"
+            "| Assumed trials | Benchmark SR0 | Deflated Sharpe |\n|---:|---:|---:|\n"
+            f"{ladder_rows}\n"
+        )
     rows = "\n".join(
         f"| {int(r.N)} | {int(r.cost_bps)} | {r.precision:.3f} | {r.CAGR*100:.1f}% | "
         f"{r.Sharpe:.2f} | {r.MaxDD*100:.1f}% |"
@@ -111,7 +194,7 @@ A single backtest can fool you three ways; each is checked below.
 
 The DSR discounts the Sharpe for having tried ~{n_trials} configurations. A value
 near 1 means the result is very unlikely to be a lucky best-of-many.
-
+{ladder}
 ## 2. Not a cherry-picked setting — sensitivity grid
 
 | Top-N | Cost (bps) | Precision@N | CAGR | Sharpe | Max DD |
@@ -127,10 +210,7 @@ near 1 means the result is very unlikely to be a lucky best-of-many.
 
 ## Interpretation
 
-The Sharpe survives deflation for multiple trials, holds across every top-N /
-cost cell, and its bootstrap lower bound stays positive — three independent
-reasons the edge is unlikely to be an artefact. Out-of-sample research evaluation
-only; not financial advice.
+{_interpretation(grid, dsr, boot)}
 """
 
 
@@ -138,9 +218,17 @@ def main(argv: Optional[List[str]] = None) -> None:
     p = argparse.ArgumentParser(description="Robustness (DSR + sensitivity grid + bootstrap) for the selector")
     p.add_argument("tickers", nargs="*", default=None)
     p.add_argument("--start", default="2015-01-01")
-    p.add_argument("--model", choices=["gbm", "logistic"], default="gbm")
-    p.add_argument("--n-trials", type=int, default=20,
-                   help="Number of strategy configurations tried (for the DSR deflation)")
+    p.add_argument("--model", choices=["gbm", "logistic", "rf", "xgb"], default="rf")
+    p.add_argument("--n-trials", type=int, default=50,
+                   help="Number of strategy configurations tried (for the DSR deflation). "
+                        "Count the whole search that led to the reported configuration, not "
+                        "the final comparison alone; under-counting inflates the DSR.")
+    p.add_argument("--trial-ladder", default="10,30,50,80",
+                   help="Comma-separated trial counts for the DSR sensitivity ladder "
+                        "(empty string disables it)")
+    p.add_argument("--execution-lag", type=int, choices=[0, 1], default=0, dest="execution_lag",
+                   help="Must match the selection run being tested: 0 prices at the rebalance "
+                        "close (default), 1 at the next trading day's close.")
     p.add_argument("--min-train", type=int, default=6)
     p.add_argument("--sector-neutral", action="store_true",
                    help="Normalise within (date, sector); must match the selection run being tested.")
@@ -153,11 +241,16 @@ def main(argv: Optional[List[str]] = None) -> None:
     rebalance_dates = month_end_rebalances(prices)
     sectors = U.load_sectors(universe) if args.sector_neutral else None
     fm = cross_sectional_normalize(build_feature_matrix(prices, U.load_fundamentals(universe), rebalance_dates), method="rank", sectors=sectors)
-    labels = make_labels(prices, rebalance_dates, horizon_months=1)
+    labels = make_labels(prices, rebalance_dates, horizon_months=1,
+                         execution_lag=args.execution_lag)
 
     print(f"Walk-forward ({args.model}), then robustness checks...")
     records = _walk_forward_records(fm, labels, rebalance_dates, 3, args.model, args.min_train)
-    grid, dsr, boot = compute_robustness(records, labels, prices, args.n_trials)
+    grid, dsr, boot = compute_robustness(records, labels, prices, args.n_trials,
+                                         execution_lag=args.execution_lag)
+    counts = [int(x) for x in args.trial_ladder.split(",") if x.strip()]
+    ladder = dsr_across_trial_counts(records, prices, counts,
+                                     execution_lag=args.execution_lag) if counts else None
 
     print(grid.to_string(index=False))
     print(f"Deflated Sharpe: {dsr['dsr']:.4f}  (SR {dsr['sr']:.3f} vs best-of-{int(dsr['n_trials'])} benchmark {dsr['sr0']:.3f})")
@@ -167,7 +260,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
         reports_dir.mkdir(exist_ok=True)
         out = reports_dir / f"robustness_{args.model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        out.write_text(build_report(grid, dsr, boot, args.n_trials))
+        out.write_text(build_report(grid, dsr, boot, args.n_trials, ladder))
         print(f"Report written to {out}")
 
 
