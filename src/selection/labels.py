@@ -89,18 +89,22 @@ def _forward_returns_at(
     rebalance_date: pd.Timestamp,
     horizon_months: int,
 ) -> pd.Series:
-    """Forward return per ticker over ``[t, t + horizon]``; skips missing prices."""
+    """Forward return per ticker over the **tradeable** window that opens on the
+    trading day after ``t`` and closes on the trading day after ``t + horizon``.
+
+    The signal is formed at ``t`` from data up to and including ``t``, but a
+    position can only be entered once ``t``'s close is actually observed, so both
+    the entry and the exit are priced at the next available close (T+1 execution).
+    This removes the point-in-time simultaneity of entering at the very close used
+    to form the decision. The example is dropped when either leg has no next
+    trading day (an incomplete forward window) or when ``t`` predates the ticker.
+    """
     exit_date = rebalance_date + pd.DateOffset(months=horizon_months)
 
     returns: Dict[str, float] = {}
     for ticker, series in closes.items():
-        entry_price = _price_asof(series, rebalance_date)
-        # The exit price must be an observation that actually exists on or before
-        # ``exit_date`` AND within the ticker's history — otherwise the forward
-        # window is incomplete and the example is dropped.
-        if exit_date > series.index.max():
-            continue
-        exit_price = _price_asof(series, exit_date)
+        entry_price = _price_next_trading_day(series, rebalance_date)
+        exit_price = _price_next_trading_day(series, exit_date)
         if entry_price is None or exit_price is None or entry_price == 0:
             continue
         returns[ticker] = (exit_price / entry_price) - 1.0
@@ -108,11 +112,19 @@ def _forward_returns_at(
     return pd.Series(returns, dtype="float64")
 
 
-def _price_asof(series: pd.Series, when: pd.Timestamp) -> float | None:
-    """Last close on or before ``when``; ``None`` if ``when`` predates the data."""
+def _price_next_trading_day(series: pd.Series, when: pd.Timestamp) -> float | None:
+    """Close on the first trading day **strictly after** ``when`` (T+1 execution).
+
+    Returns ``None`` when ``when`` predates the ticker's history (the stock was not
+    trading at the decision date) or when no trading day follows ``when`` (the
+    forward window runs past the available data).
+    """
     if when < series.index.min():
         return None
-    value = series.asof(when)
+    pos = series.index.searchsorted(when, side="right")
+    if pos >= len(series):
+        return None
+    value = series.iloc[pos]
     return None if pd.isna(value) else float(value)
 
 

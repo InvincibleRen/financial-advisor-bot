@@ -69,3 +69,29 @@ def test_labels_are_as_of_non_trading_dates():
     # A rallies, B is flat -> A beats the median, B does not.
     assert labels.loc[(saturday, "A")] == 1
     assert labels.loc[(saturday, "B")] == 0
+
+
+def test_entry_is_priced_the_trading_day_after_signal():
+    # A one-day price spike ON the rebalance date must NOT become the entry price:
+    # under T+1 execution the entry is the next trading day's close. Here the spike
+    # sits exactly on the signal date; a correct entry ignores it (uses 100, not
+    # 1000), so the forward return to the later 130 leg is about +30%, not -87%.
+    closes = [100.0] * 20 + [1000.0] + [100.0] * 9 + [130.0] * 40
+    idx = pd.date_range("2020-01-01", periods=len(closes), freq="D")
+    series = {"A": pd.Series(closes, index=idx)}
+    signal_date = idx[20]  # the spike day is the rebalance date
+
+    fwd = L._forward_returns_at(series, signal_date, horizon_months=1)
+
+    assert fwd["A"] > 0.25  # ~+30% from a 100 entry, not ~-87% from the 1000 spike
+
+
+def test_next_trading_day_helper_skips_the_signal_date():
+    idx = pd.date_range("2020-01-01", periods=10, freq="D")
+    s = pd.Series(range(10), index=idx, dtype="float64")
+    # Strictly-after semantics: querying an existing date returns the NEXT day.
+    assert L._price_next_trading_day(s, idx[3]) == 4.0
+    # No trading day after the last date -> None (incomplete forward window).
+    assert L._price_next_trading_day(s, idx[-1]) is None
+    # A date before the history -> None (not yet trading).
+    assert L._price_next_trading_day(s, pd.Timestamp("2019-12-01")) is None

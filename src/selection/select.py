@@ -722,18 +722,30 @@ def _equal_weight_period_return(
 
 
 def _period_return(series: pd.Series, entry: pd.Timestamp, exit_: pd.Timestamp) -> Optional[float]:
-    """Simple return between the as-of closes at ``entry`` and ``exit_``."""
-    entry_price = _price_asof(series, entry)
-    exit_price = _price_asof(series, exit_)
+    """Realised return between the **tradeable** closes for the holding period.
+
+    A position selected at a rebalance date can only be entered once that date's
+    close is known, so both the entry and the exit are priced at the next trading
+    day's close (T+1 execution), consistent with the labelling in ``labels.py``.
+    """
+    entry_price = _price_next_trading_day(series, entry)
+    exit_price = _price_next_trading_day(series, exit_)
     if entry_price is None or exit_price is None or entry_price == 0:
         return None
     return (exit_price / entry_price) - 1.0
 
 
-def _price_asof(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
+def _price_next_trading_day(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
+    """Close on the first trading day strictly after ``when`` (T+1 execution).
+
+    ``None`` when ``when`` predates the series or no trading day follows it.
+    """
     if when < series.index.min():
         return None
-    value = series.asof(when)
+    pos = series.index.searchsorted(when, side="right")
+    if pos >= len(series):
+        return None
+    value = series.iloc[pos]
     return None if pd.isna(value) else float(value)
 
 
