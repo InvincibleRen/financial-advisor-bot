@@ -81,9 +81,23 @@ def test_entry_is_priced_the_trading_day_after_signal():
     series = {"A": pd.Series(closes, index=idx)}
     signal_date = idx[20]  # the spike day is the rebalance date
 
-    fwd = L._forward_returns_at(series, signal_date, horizon_months=1)
+    fwd = L._forward_returns_at(series, signal_date, horizon_months=1, execution_lag=1)
 
     assert fwd["A"] > 0.25  # ~+30% from a 100 entry, not ~-87% from the 1000 spike
+
+
+def test_default_execution_prices_at_the_signal_close():
+    # The default convention (execution_lag=0) transacts at the signal date's own
+    # close, so the same spike DOES become the entry price. This documents the
+    # simultaneity the T+1 setting exists to remove.
+    closes = [100.0] * 20 + [1000.0] + [100.0] * 9 + [130.0] * 40
+    idx = pd.date_range("2020-01-01", periods=len(closes), freq="D")
+    series = {"A": pd.Series(closes, index=idx)}
+    signal_date = idx[20]
+
+    fwd = L._forward_returns_at(series, signal_date, horizon_months=1)
+
+    assert fwd["A"] < -0.8  # entered at the 1000 spike, exits near 130
 
 
 def test_next_trading_day_helper_skips_the_signal_date():

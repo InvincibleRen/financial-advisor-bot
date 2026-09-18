@@ -217,6 +217,7 @@ def evaluate_portfolio(
     prices: Dict[str, pd.DataFrame],
     periods_per_year: int = PERIODS_PER_YEAR,
     cost_per_turnover: float = 0.0,
+    execution_lag: int = 0,
 ) -> Dict[str, pd.Series]:
     """Turn a weights schedule into realised strategy and benchmark return streams.
 
@@ -246,17 +247,17 @@ def evaluate_portfolio(
     charged_turnover: Dict[pd.Timestamp, float] = {}
 
     for entry, exit_ in zip(dates[:-1], dates[1:]):
-        gross = _weighted_period_return(weights.loc[entry], closes, entry, exit_)
+        gross = _weighted_period_return(weights.loc[entry], closes, entry, exit_, execution_lag)
         if gross is not None:
             cost = float(turnover.loc[entry]) * cost_per_turnover
             strategy[entry] = gross - cost
             charged_turnover[entry] = float(turnover.loc[entry])
 
         universe = [t for t in closes if t != BENCHMARK_TICKER]
-        benchmark[entry] = _equal_weight_period_return(universe, closes, entry, exit_)
+        benchmark[entry] = _equal_weight_period_return(universe, closes, entry, exit_, execution_lag)
 
         if BENCHMARK_TICKER in closes:
-            spy_ret = _period_return(closes[BENCHMARK_TICKER], entry, exit_)
+            spy_ret = _period_return(closes[BENCHMARK_TICKER], entry, exit_, execution_lag)
             if spy_ret is not None:
                 spy[entry] = spy_ret
 
@@ -296,6 +297,7 @@ def run_selection_backtest(
     used_sentiment: bool = False,
     train_window: Optional[int] = TRAIN_WINDOW_MONTHS,
     label_horizon_months: int = 1,
+    execution_lag: int = 0,
 ) -> SelectionBacktest:
     """End-to-end: walk-forward select, evaluate net of costs, and bundle metrics.
 
@@ -309,7 +311,7 @@ def run_selection_backtest(
     weights = _records_to_weights(records)
     streams = evaluate_portfolio(
         weights, prices, periods_per_year=periods_per_year,
-        cost_per_turnover=cost_per_turnover,
+        cost_per_turnover=cost_per_turnover, execution_lag=execution_lag,
     )
     avg_turnover = float(streams["turnover"].mean()) if not streams["turnover"].empty else 0.0
     strat, bench = streams["strategy"], streams["benchmark"]
@@ -687,6 +689,7 @@ def _weighted_period_return(
     closes: Dict[str, pd.Series],
     entry: pd.Timestamp,
     exit_: pd.Timestamp,
+    execution_lag: int = 0,
 ) -> Optional[float]:
     """Weighted realised return of the held names over ``[entry, exit_]``."""
     total = 0.0
@@ -694,7 +697,7 @@ def _weighted_period_return(
     for ticker, weight in row_weights.items():
         if weight <= 0 or ticker not in closes:
             continue
-        period_ret = _period_return(closes[ticker], entry, exit_)
+        period_ret = _period_return(closes[ticker], entry, exit_, execution_lag)
         if period_ret is None:
             continue
         total += weight * period_ret
@@ -710,36 +713,55 @@ def _equal_weight_period_return(
     closes: Dict[str, pd.Series],
     entry: pd.Timestamp,
     exit_: pd.Timestamp,
+    execution_lag: int = 0,
 ) -> float:
     """Equal-weight realised return across every ticker with a valid window."""
     period_returns = [
         r for t in tickers
-        if (r := _period_return(closes[t], entry, exit_)) is not None
+        if (r := _period_return(closes[t], entry, exit_, execution_lag)) is not None
     ]
     if not period_returns:
         return 0.0
     return float(sum(period_returns) / len(period_returns))
 
 
-def _period_return(series: pd.Series, entry: pd.Timestamp, exit_: pd.Timestamp) -> Optional[float]:
-    """Realised return between the **tradeable** closes for the holding period.
+def _period_return(
+    series: pd.Series,
+    entry: pd.Timestamp,
+    exit_: pd.Timestamp,
+    execution_lag: int = 0,
+) -> Optional[float]:
+    """Realised return over the holding period at the chosen execution prices.
 
-    A position selected at a rebalance date can only be entered once that date's
-    close is known, so both the entry and the exit are priced at the next trading
-    day's close (T+1 execution), consistent with the labelling in ``labels.py``.
+    ``execution_lag`` must match the one used for the labels (see ``labels.py``):
+    ``0`` prices at the close as of each date, ``1`` at the following trading day's
+    close.
     """
-    entry_price = _price_next_trading_day(series, entry)
-    exit_price = _price_next_trading_day(series, exit_)
+    entry_price = _execution_price(series, entry, execution_lag)
+    exit_price = _execution_price(series, exit_, execution_lag)
     if entry_price is None or exit_price is None or entry_price == 0:
         return None
     return (exit_price / entry_price) - 1.0
 
 
-def _price_next_trading_day(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
-    """Close on the first trading day strictly after ``when`` (T+1 execution).
+def _execution_price(
+    series: pd.Series, when: pd.Timestamp, execution_lag: int = 0
+) -> Optional[float]:
+    """Price at which a position decided on ``when`` is assumed to transact."""
+    if execution_lag <= 0:
+        return _price_asof(series, when)
+    return _price_next_trading_day(series, when)
 
-    ``None`` when ``when`` predates the series or no trading day follows it.
-    """
+
+def _price_asof(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
+    if when < series.index.min():
+        return None
+    value = series.asof(when)
+    return None if pd.isna(value) else float(value)
+
+
+def _price_next_trading_day(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
+    """Close on the first trading day strictly after ``when`` (T+1 execution)."""
     if when < series.index.min():
         return None
     pos = series.index.searchsorted(when, side="right")

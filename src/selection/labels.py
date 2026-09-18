@@ -32,6 +32,7 @@ def make_labels(
     prices: Dict[str, pd.DataFrame],
     rebalance_dates: List[pd.Timestamp],
     horizon_months: int = 1,
+    execution_lag: int = 0,
 ) -> pd.Series:
     """Return a binary label Series indexed by ``(rebalance_date, ticker)``.
 
@@ -58,7 +59,9 @@ def make_labels(
 
     labels: Dict[tuple, int] = {}
     for rebalance_date in pd.to_datetime(list(rebalance_dates)):
-        forward_returns = _forward_returns_at(closes, rebalance_date, horizon_months)
+        forward_returns = _forward_returns_at(
+            closes, rebalance_date, horizon_months, execution_lag
+        )
         if forward_returns.empty:
             continue
         median = forward_returns.median()
@@ -88,28 +91,53 @@ def _forward_returns_at(
     closes: Dict[str, pd.Series],
     rebalance_date: pd.Timestamp,
     horizon_months: int,
+    execution_lag: int = 0,
 ) -> pd.Series:
-    """Forward return per ticker over the **tradeable** window that opens on the
-    trading day after ``t`` and closes on the trading day after ``t + horizon``.
+    """Forward return per ticker over ``[t, t + horizon]`` at the execution price.
 
-    The signal is formed at ``t`` from data up to and including ``t``, but a
-    position can only be entered once ``t``'s close is actually observed, so both
-    the entry and the exit are priced at the next available close (T+1 execution).
-    This removes the point-in-time simultaneity of entering at the very close used
-    to form the decision. The example is dropped when either leg has no next
-    trading day (an incomplete forward window) or when ``t`` predates the ticker.
+    ``execution_lag`` selects the convention. With the default of ``0`` the entry
+    and exit are priced at the close as of each date, which is the convention used
+    throughout the monthly cross-sectional factor literature. With ``1`` they are
+    priced at the following trading day's close, which removes the simultaneity of
+    transacting at the very close used to form the signal; Chapter 5 reports that
+    setting as a robustness check. An example is dropped whenever either leg has no
+    usable price, which is what keeps an incomplete forward window out of the data.
     """
     exit_date = rebalance_date + pd.DateOffset(months=horizon_months)
 
     returns: Dict[str, float] = {}
     for ticker, series in closes.items():
-        entry_price = _price_next_trading_day(series, rebalance_date)
-        exit_price = _price_next_trading_day(series, exit_date)
+        entry_price = _execution_price(series, rebalance_date, execution_lag)
+        exit_price = _execution_price(series, exit_date, execution_lag)
         if entry_price is None or exit_price is None or entry_price == 0:
             continue
         returns[ticker] = (exit_price / entry_price) - 1.0
 
     return pd.Series(returns, dtype="float64")
+
+
+def _execution_price(
+    series: pd.Series, when: pd.Timestamp, execution_lag: int = 0
+) -> float | None:
+    """Price at which a position decided on ``when`` is assumed to transact."""
+    if execution_lag <= 0:
+        return _price_asof(series, when)
+    return _price_next_trading_day(series, when)
+
+
+def _price_asof(series: pd.Series, when: pd.Timestamp) -> float | None:
+    """Last close on or before ``when``; ``None`` if ``when`` predates the data.
+
+    Note the simultaneity this convention carries: the signal at ``t`` is formed
+    from data up to and including ``t``'s close, and the position is then priced at
+    that same close.
+    """
+    if when < series.index.min():
+        return None
+    if when > series.index.max():
+        return None          # the forward window runs past the ticker's history
+    value = series.asof(when)
+    return None if pd.isna(value) else float(value)
 
 
 def _price_next_trading_day(series: pd.Series, when: pd.Timestamp) -> float | None:

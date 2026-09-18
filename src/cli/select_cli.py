@@ -359,6 +359,14 @@ def main(argv: Optional[List[str]] = None) -> None:
                         help="Minimum prior rebalances before a fold is evaluated (default 6)")
     parser.add_argument("--cost", type=float, default=DEFAULT_COST_PER_TURNOVER,
                         help="Per-turnover transaction cost (default 0.001 = 10 bps); use 0 for gross")
+    parser.add_argument("--execution-lag", type=int, choices=[0, 1], default=0,
+                        dest="execution_lag",
+                        help="Trading days between the signal date and the price at which "
+                             "positions transact. 0 (default) prices at the rebalance close, "
+                             "the standard monthly-factor convention; 1 prices at the next "
+                             "trading day's close, which removes the simultaneity of "
+                             "transacting at the very close used to form the signal "
+                             "(reported as a robustness check).")
     parser.add_argument("--normalize", choices=["rank", "zscore", "none"], default="rank",
                         help="Cross-sectional feature standardisation per rebalance date "
                              "(default: rank — improves ranking AUC/precision; 'none' = raw levels)")
@@ -407,7 +415,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         feature_matrix = cross_sectional_normalize(
             feature_matrix, method=args.normalize, sectors=sectors
         )
-    labels = make_labels(prices, rebalance_dates, horizon_months=args.horizon)
+    labels = make_labels(prices, rebalance_dates, horizon_months=args.horizon,
+                         execution_lag=args.execution_lag)
     if args.horizon > 1:
         print(f"Label horizon = {args.horizon} months; applying a {args.horizon - 1}-month "
               "leakage embargo (training only uses folds whose label has resolved).")
@@ -423,6 +432,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             feature_matrix, labels, prices_eval, rebalance_dates,
             n=args.top_n, model_kind=kind, min_train_dates=args.min_train,
             cost_per_turnover=args.cost, label_horizon_months=args.horizon,
+            execution_lag=args.execution_lag,
         )
 
     print_summary(results)
