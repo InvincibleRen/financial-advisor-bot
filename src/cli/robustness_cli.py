@@ -226,6 +226,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     p.add_argument("--trial-ladder", default="10,30,50,80",
                    help="Comma-separated trial counts for the DSR sensitivity ladder "
                         "(empty string disables it)")
+    p.add_argument("--label-benchmark", choices=["median", "mean"], default="median",
+                   dest="label_benchmark",
+                   help="Must match the selection run being tested: the cross-sectional bar a "
+                        "stock has to beat to count as a positive example.")
     p.add_argument("--execution-lag", type=int, choices=[0, 1], default=0, dest="execution_lag",
                    help="Must match the selection run being tested: 0 prices at the rebalance "
                         "close (default), 1 at the next trading day's close.")
@@ -242,7 +246,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     sectors = U.load_sectors(universe) if args.sector_neutral else None
     fm = cross_sectional_normalize(build_feature_matrix(prices, U.load_fundamentals(universe), rebalance_dates), method="rank", sectors=sectors)
     labels = make_labels(prices, rebalance_dates, horizon_months=1,
-                         execution_lag=args.execution_lag)
+                         execution_lag=args.execution_lag,
+                         benchmark=args.label_benchmark)
 
     print(f"Walk-forward ({args.model}), then robustness checks...")
     records = _walk_forward_records(fm, labels, rebalance_dates, 3, args.model, args.min_train)

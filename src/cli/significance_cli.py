@@ -112,7 +112,11 @@ def main(argv: Optional[List[str]] = None) -> None:
     p.add_argument("tickers", nargs="*", default=None)
     p.add_argument("--start", default="2015-01-01")
     p.add_argument("--top-n", type=int, default=3)
-    p.add_argument("--model", choices=["gbm", "logistic", "both"], default="both")
+    p.add_argument("--model", choices=["gbm", "logistic", "rf", "xgb", "both"], default="both")
+    p.add_argument("--label-benchmark", choices=["median", "mean"], default="median",
+                   dest="label_benchmark",
+                   help="Must match the selection run being tested: the cross-sectional bar a "
+                        "stock has to beat to count as a positive example.")
     p.add_argument("--permutations", type=int, default=100)
     p.add_argument("--min-train", type=int, default=6)
     p.add_argument("--seed", type=int, default=0)
@@ -128,7 +132,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     rebalance_dates = month_end_rebalances(prices)
     sectors = U.load_sectors(universe) if args.sector_neutral else None
     fm = cross_sectional_normalize(build_feature_matrix(prices, fundamentals, rebalance_dates), method="rank", sectors=sectors)
-    labels = make_labels(prices, rebalance_dates, horizon_months=1)
+    labels = make_labels(prices, rebalance_dates, horizon_months=1,
+                         benchmark=args.label_benchmark)
 
     kinds = ["gbm", "logistic"] if args.model == "both" else [args.model]
     results: Dict[str, SignificanceResult] = {}

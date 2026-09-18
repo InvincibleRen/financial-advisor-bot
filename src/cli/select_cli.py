@@ -367,6 +367,13 @@ def main(argv: Optional[List[str]] = None) -> None:
                              "trading day's close, which removes the simultaneity of "
                              "transacting at the very close used to form the signal "
                              "(reported as a robustness check).")
+    parser.add_argument("--label-benchmark", choices=["median", "mean"], default="median",
+                        dest="label_benchmark",
+                        help="Cross-sectional bar a stock must beat to be a positive example. "
+                             "'median' (default) follows the factor literature and splits each "
+                             "date in half; 'mean' sets the bar at the equal-weight portfolio "
+                             "return, aligning the training target with the benchmark the "
+                             "strategy is actually judged against.")
     parser.add_argument("--normalize", choices=["rank", "zscore", "none"], default="rank",
                         help="Cross-sectional feature standardisation per rebalance date "
                              "(default: rank — improves ranking AUC/precision; 'none' = raw levels)")
@@ -416,7 +423,8 @@ def main(argv: Optional[List[str]] = None) -> None:
             feature_matrix, method=args.normalize, sectors=sectors
         )
     labels = make_labels(prices, rebalance_dates, horizon_months=args.horizon,
-                         execution_lag=args.execution_lag)
+                         execution_lag=args.execution_lag,
+                         benchmark=args.label_benchmark)
     if args.horizon > 1:
         print(f"Label horizon = {args.horizon} months; applying a {args.horizon - 1}-month "
               "leakage embargo (training only uses folds whose label has resolved).")

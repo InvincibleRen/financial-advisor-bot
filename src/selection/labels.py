@@ -33,6 +33,7 @@ def make_labels(
     rebalance_dates: List[pd.Timestamp],
     horizon_months: int = 1,
     execution_lag: int = 0,
+    benchmark: str = "median",
 ) -> pd.Series:
     """Return a binary label Series indexed by ``(rebalance_date, ticker)``.
 
@@ -49,12 +50,24 @@ def make_labels(
         The dates at which the portfolio is re-selected.
     horizon_months:
         Holding period, in calendar months, used to measure the forward return.
+    benchmark:
+        The cross-sectional statistic a stock must beat to be labelled positive.
+        ``"median"`` (the default) is the convention in the cross-sectional factor
+        literature and splits each date exactly in half. ``"mean"`` instead sets the
+        bar at the equal-weight portfolio return, which is what the evaluation
+        benchmarks the strategy against. The two are not the same: monthly
+        cross-sectional returns are right-skewed, so the mean sits above the median
+        and fewer than half the stocks clear it. Training on the median therefore
+        optimises a slightly easier target than the one the portfolio is judged on,
+        and ``"mean"`` closes that gap at the cost of mildly imbalanced classes.
 
     Notes
     -----
     Tickers whose entry or exit price is unavailable at a given rebalance date are
     excluded from that date's cross-section (and therefore from the median).
     """
+    if benchmark not in ("median", "mean"):
+        raise ValueError(f"benchmark must be 'median' or 'mean', got {benchmark!r}")
     closes = _close_series_by_ticker(prices)
 
     labels: Dict[tuple, int] = {}
@@ -64,9 +77,9 @@ def make_labels(
         )
         if forward_returns.empty:
             continue
-        median = forward_returns.median()
+        bar = forward_returns.median() if benchmark == "median" else forward_returns.mean()
         for ticker, fwd_ret in forward_returns.items():
-            labels[(rebalance_date, ticker)] = int(fwd_ret > median)
+            labels[(rebalance_date, ticker)] = int(fwd_ret > bar)
 
     return _as_labelled_series(labels)
 

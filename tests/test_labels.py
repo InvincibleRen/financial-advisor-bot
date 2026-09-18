@@ -109,3 +109,50 @@ def test_next_trading_day_helper_skips_the_signal_date():
     assert L._price_next_trading_day(s, idx[-1]) is None
     # A date before the history -> None (not yet trading).
     assert L._price_next_trading_day(s, pd.Timestamp("2019-12-01")) is None
+
+
+# --------------------------------------------------------------------------- #
+# Cross-sectional benchmark (median vs mean)                                   #
+# --------------------------------------------------------------------------- #
+# The label's bar and the portfolio's benchmark are not the same statistic. The
+# equal-weight benchmark earns the cross-sectional *mean*, while the default label
+# asks only to beat the *median*; because monthly cross-sectional returns are
+# right-skewed the mean sits above the median, so the default trains against a
+# slightly easier target than the one the strategy is judged on.
+
+def _flat_prices(rates):
+    """One constant-growth Close series per ticker, on a shared business-day index."""
+    index = pd.date_range("2020-01-01", periods=200, freq="B")
+    return {
+        name: pd.DataFrame({"Close": 100 * np.cumprod(1 + np.full(len(index), r))}, index=index)
+        for name, r in rates.items()
+    }
+
+
+def test_mean_benchmark_is_a_higher_bar_when_one_name_runs_away():
+    # Three ordinary names and one outlier: the outlier pulls the mean above the
+    # median, so the second-best name clears the median but not the mean.
+    prices = _flat_prices({"A": 0.0005, "B": 0.001, "C": 0.002, "D": 0.010})
+    dates = [pd.Timestamp("2020-02-28")]
+
+    by_median = L.make_labels(prices, dates, benchmark="median")
+    by_mean = L.make_labels(prices, dates, benchmark="mean")
+
+    assert by_median.xs(dates[0])["C"] == 1
+    assert by_mean.xs(dates[0])["C"] == 0
+    assert by_mean.xs(dates[0])["D"] == 1          # the outlier clears either bar
+    assert by_mean.sum() < by_median.sum()         # fewer positives under the mean
+
+
+def test_median_remains_the_default_benchmark():
+    prices = _flat_prices({"A": 0.0005, "B": 0.001, "C": 0.002, "D": 0.010})
+    dates = [pd.Timestamp("2020-02-28")]
+    pd.testing.assert_series_equal(
+        L.make_labels(prices, dates), L.make_labels(prices, dates, benchmark="median")
+    )
+
+
+def test_unknown_benchmark_is_rejected():
+    import pytest
+    with pytest.raises(ValueError, match="benchmark must be"):
+        L.make_labels(_flat_prices({"A": 0.001}), [pd.Timestamp("2020-02-28")], benchmark="mode")
