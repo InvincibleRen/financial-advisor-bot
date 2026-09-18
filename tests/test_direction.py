@@ -188,3 +188,22 @@ def test_core_selection_does_not_import_direction():
     for path in pkg_dir.glob("*.py"):
         assert not import_pat.search(path.read_text(encoding="utf-8")), \
             f"{path.name} imports src.direction — breaks removability"
+
+
+def test_core_selection_does_not_import_sentiment():
+    """The same guarantee for Extension A.
+
+    The core accepts an optional sentiment *column*, which is why the feature
+    builder mentions the word, but it must never import the extension that
+    produces it, or deleting `sentiment/` would break the core.
+    """
+    import pathlib
+    import re
+
+    import src.selection as selection
+
+    pkg_dir = pathlib.Path(selection.__file__).parent
+    import_pat = re.compile(r"^\s*(from|import)\s+src\.sentiment", re.MULTILINE)
+    for path in pkg_dir.glob("*.py"):
+        assert not import_pat.search(path.read_text(encoding="utf-8")), \
+            f"{path.name} imports src.sentiment — breaks removability"

@@ -68,8 +68,15 @@ def _precision_at_n(records: List[_FoldRecord], labels: pd.Series, n: int) -> fl
     return float(np.mean(ps)) if ps else float("nan")
 
 
-def compute_robustness(records, labels, prices, n_trials: int, execution_lag: int = 0):
-    """Return (grid_df, dsr_dict, bootstrap_dict) from already-trained folds."""
+def compute_robustness(records, labels, prices, n_trials: int, execution_lag: int = 0,
+                       primary_n: int = 3):
+    """Return (grid_df, dsr_dict, bootstrap_dict) from already-trained folds.
+
+    ``primary_n`` is the book the deflation and the bootstrap are computed on. It
+    must be the same top-N the surrounding evaluation reports, because a deflated
+    Sharpe quoted for one book and a headline Sharpe quoted for another describe
+    different strategies.
+    """
     grid, trial_sharpes = [], []
     for n in TOP_NS:
         w = _weights_for_n(records, n)
@@ -82,14 +89,15 @@ def compute_robustness(records, labels, prices, n_trials: int, execution_lag: in
             grid.append({"N": n, "cost_bps": int(c * 10000), "precision": prec,
                          "CAGR": m["annualised_return"], "Sharpe": m["sharpe_ratio"],
                          "MaxDD": m["max_drawdown"]})
-    primary = evaluate_portfolio(_weights_for_n(records, 3), prices, periods_per_year=12,
+    primary = evaluate_portfolio(_weights_for_n(records, primary_n), prices, periods_per_year=12,
                                  cost_per_turnover=0.001, execution_lag=execution_lag)["strategy"]
     dsr = deflated_sharpe_ratio(primary.to_numpy(), trial_sharpes=trial_sharpes, n_trials=n_trials)
     boot = bootstrap_return_metrics(primary.to_numpy(), periods_per_year=12)
     return pd.DataFrame(grid), dsr, boot
 
 
-def dsr_across_trial_counts(records, prices, trial_counts, execution_lag: int = 0):
+def dsr_across_trial_counts(records, prices, trial_counts, execution_lag: int = 0,
+                            primary_n: int = 3):
     """DSR for the primary book under several assumptions about the search size.
 
     The number of configurations tried is a judgement call, not an observable, and
@@ -97,7 +105,7 @@ def dsr_across_trial_counts(records, prices, trial_counts, execution_lag: int = 
     honest than defending one number: the reader sees how the conclusion changes as
     the assumed search widens.
     """
-    strat = evaluate_portfolio(_weights_for_n(records, 3), prices, periods_per_year=12,
+    strat = evaluate_portfolio(_weights_for_n(records, primary_n), prices, periods_per_year=12,
                                cost_per_turnover=0.001, execution_lag=execution_lag)["strategy"]
     trial_sharpes = []
     for n in TOP_NS:
@@ -201,7 +209,7 @@ near 1 means the result is very unlikely to be a lucky best-of-many.
 |---:|---:|---:|---:|---:|---:|
 {rows}
 
-## 3. Not carried by a few months — bootstrap 95% CIs (top-3, 10 bps)
+## 3. Not carried by a few months — bootstrap 95% CIs (primary book, 10 bps)
 
 | Metric | Median | 95% CI |
 |---|---:|---:|
@@ -233,6 +241,9 @@ def main(argv: Optional[List[str]] = None) -> None:
     p.add_argument("--execution-lag", type=int, choices=[0, 1], default=0, dest="execution_lag",
                    help="Must match the selection run being tested: 0 prices at the rebalance "
                         "close (default), 1 at the next trading day's close.")
+    p.add_argument("--top-n", type=int, default=3, dest="top_n",
+                   help="The book the deflation and bootstrap are computed on. Set it to the "
+                        "same top-N the selection run being tested reports (default 3).")
     p.add_argument("--min-train", type=int, default=6)
     p.add_argument("--sector-neutral", action="store_true",
                    help="Normalise within (date, sector); must match the selection run being tested.")
@@ -252,10 +263,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     print(f"Walk-forward ({args.model}), then robustness checks...")
     records = _walk_forward_records(fm, labels, rebalance_dates, 3, args.model, args.min_train)
     grid, dsr, boot = compute_robustness(records, labels, prices, args.n_trials,
-                                         execution_lag=args.execution_lag)
+                                         execution_lag=args.execution_lag, primary_n=args.top_n)
     counts = [int(x) for x in args.trial_ladder.split(",") if x.strip()]
-    ladder = dsr_across_trial_counts(records, prices, counts,
-                                     execution_lag=args.execution_lag) if counts else None
+    ladder = dsr_across_trial_counts(records, prices, counts, execution_lag=args.execution_lag,
+                                     primary_n=args.top_n) if counts else None
 
     print(grid.to_string(index=False))
     print(f"Deflated Sharpe: {dsr['dsr']:.4f}  (SR {dsr['sr']:.3f} vs best-of-{int(dsr['n_trials'])} benchmark {dsr['sr0']:.3f})")
