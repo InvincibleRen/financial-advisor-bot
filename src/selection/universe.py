@@ -167,7 +167,7 @@ def load_prices(
     for ticker in tickers:
         path = os.path.join(cache_dir, f"{ticker}.csv")
         if os.path.exists(path) and not force_refresh:
-            out[ticker] = _apply_window(_read_price_cache(path), start, end)
+            out[ticker] = _apply_window(_to_total_return_basis(_read_price_cache(path)), start, end)
             continue
         try:
             df = fetcher(ticker, start, end)
@@ -175,8 +175,38 @@ def load_prices(
             warnings.warn(f"Skipping {ticker}: price fetch failed ({exc})")
             continue
         df = df.dropna(subset=["Close"]) if "Close" in df.columns else df
-        _write_price_cache(df, path)
-        out[ticker] = _apply_window(df, start, end)
+        _write_price_cache(df, path)          # the cache stays in raw form
+        out[ticker] = _apply_window(_to_total_return_basis(df), start, end)
+    return out
+
+
+def _to_total_return_basis(df: pd.DataFrame) -> pd.DataFrame:
+    """Rescale OHLC onto a dividend-adjusted (total-return) basis.
+
+    yfinance reports ``Close`` net of splits but *before* dividends, and
+    ``Adj Close`` net of both. Momentum, reversal and every realised return in the
+    backtest are therefore price returns rather than total returns unless the
+    series is adjusted, which systematically penalises high-yield stocks in the
+    cross-section (a dividend shows up as a price drop, i.e. as negative momentum).
+
+    Every price column is multiplied by the same per-row factor
+    ``Adj Close / Close`` so that the whole OHLC block stays mutually consistent:
+    ADX still sees a coherent High/Low/Close, and ``Close`` becomes the
+    total-return series. ``Volume`` is a share count and is left untouched (it is
+    already split-adjusted, and the factor here carries only the dividend part).
+    Frames without an ``Adj Close`` column are returned unchanged.
+    """
+    if df is None or df.empty or "Adj Close" not in df.columns or "Close" not in df.columns:
+        return df
+
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    adjusted = pd.to_numeric(df["Adj Close"], errors="coerce")
+    factor = adjusted / close.where(close != 0)
+
+    out = df.copy()
+    for column in ("Open", "High", "Low", "Close"):
+        if column in out.columns:
+            out[column] = pd.to_numeric(out[column], errors="coerce") * factor
     return out
 
 

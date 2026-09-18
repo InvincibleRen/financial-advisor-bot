@@ -255,3 +255,51 @@ def test_missing_freq_column_is_treated_as_quarterly(tmp_path):
     q4 = df[df["period_end"] == pd.Timestamp("2022-12-31")].iloc[0]
     assert math.isclose(q4["ttm_net_income"], 40.0)     # rolling 4 x 10
     assert math.isclose(q4["roe"], 0.20)
+
+
+# --------------------------------------------------------------------------- #
+# Total-return (dividend) adjustment                                          #
+# --------------------------------------------------------------------------- #
+
+def _fake_prices_with_dividends(ticker, start, end):
+    """Raw close flat at 100 while Adj Close accretes: a pure dividend effect."""
+    idx = pd.date_range("2020-01-01", periods=4, freq="D")
+    return pd.DataFrame(
+        {
+            "Open": [100.0] * 4,
+            "High": [110.0] * 4,
+            "Low": [90.0] * 4,
+            "Close": [100.0] * 4,
+            "Adj Close": [95.0, 96.0, 97.0, 100.0],
+            "Volume": [1_000_000] * 4,
+        },
+        index=idx,
+    )
+
+
+def test_prices_are_returned_on_a_total_return_basis(tmp_path):
+    out = U.load_prices(
+        ["AAPL"], cache_dir=str(tmp_path), fetcher=_fake_prices_with_dividends
+    )
+    frame = out["AAPL"]
+
+    # Close becomes the dividend-adjusted (total-return) series.
+    assert frame["Close"].tolist() == pytest.approx([95.0, 96.0, 97.0, 100.0])
+    # High and Low are rescaled by the SAME per-row factor, so the OHLC block
+    # stays mutually coherent for indicators such as ADX.
+    assert frame["High"].iloc[0] == pytest.approx(110.0 * 0.95)
+    assert frame["Low"].iloc[0] == pytest.approx(90.0 * 0.95)
+    # Volume is a share count, not a price, and must not be rescaled.
+    assert frame["Volume"].iloc[0] == 1_000_000
+
+
+def test_price_cache_stays_in_raw_form(tmp_path):
+    U.load_prices(["AAPL"], cache_dir=str(tmp_path), fetcher=_fake_prices_with_dividends)
+    cached = pd.read_csv(tmp_path / "AAPL.csv", index_col=0)
+    # The cache keeps the unadjusted close so the adjustment is never applied twice.
+    assert cached["Close"].iloc[0] == pytest.approx(100.0)
+
+
+def test_prices_without_adj_close_are_unchanged(tmp_path):
+    out = U.load_prices(["AAPL"], cache_dir=str(tmp_path), fetcher=_fake_prices)
+    assert out["AAPL"]["Close"].iloc[0] == pytest.approx(100.0)
