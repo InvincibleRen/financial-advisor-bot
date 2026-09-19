@@ -213,3 +213,24 @@ def test_ablation_runs_with_and_without_sentiment():
     assert set(results) == {"with_sentiment", "without_sentiment"}
     assert results["with_sentiment"].used_sentiment is True
     assert results["without_sentiment"].used_sentiment is False
+
+
+def test_period_return_is_dropped_when_the_exit_date_is_past_the_data():
+    """A period the price history does not cover must not be priced on a stale close.
+
+    Before this guard, an exit date beyond the last observation reused that last
+    close, so a two-week return was reported as a one-month return. The label path
+    always dropped such a period; the portfolio path now agrees with it.
+    """
+    import pandas as pd
+
+    from src.selection.select import _period_return
+
+    idx = pd.bdate_range("2026-06-01", "2026-07-17")
+    series = pd.Series(range(100, 100 + len(idx)), index=idx, dtype="float64")
+
+    within = _period_return(series, pd.Timestamp("2026-06-30"), pd.Timestamp("2026-07-15"))
+    assert within is not None
+
+    beyond = _period_return(series, pd.Timestamp("2026-06-30"), pd.Timestamp("2026-07-31"))
+    assert beyond is None, "an exit beyond the data must drop the period, not reuse a stale close"

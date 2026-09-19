@@ -754,7 +754,19 @@ def _execution_price(
 
 
 def _price_asof(series: pd.Series, when: pd.Timestamp) -> Optional[float]:
+    """Last close on or before ``when``; ``None`` outside the series' span.
+
+    The upper guard matters as much as the lower one. Without it, an exit date
+    beyond a ticker's last observation silently reuses that last close, so a
+    position held over a period the data does not cover is priced as though it
+    were flat for the remainder, and a partial period is reported as a whole one.
+    The label path in ``labels.py`` has always applied both guards; this is the
+    same convention, so that a ticker is dropped from a period rather than priced
+    on stale data.
+    """
     if when < series.index.min():
+        return None
+    if when > series.index.max():
         return None
     value = series.asof(when)
     return None if pd.isna(value) else float(value)
